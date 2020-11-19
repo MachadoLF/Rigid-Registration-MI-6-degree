@@ -1,0 +1,6 @@
+# ignore debug files folder
+debug/*
+
+# ignore CMake volatile files
+CMakeLists.txt.user
+
