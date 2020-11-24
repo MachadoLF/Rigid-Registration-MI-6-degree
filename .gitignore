@@ -4,3 +4,9 @@ debug/*
 # ignore CMake volatile files
 CMakeLists.txt.user
 
+# ignore some resulting datafile
+data/CheckBoardAfter.mha
+data/CheckBoardBefore.mha
+data/OutPut.mha
+data/*.csv
+
