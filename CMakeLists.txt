@@ -1,10 +1,10 @@
 
 cmake_minimum_required(VERSION 2.8)
  
-project(MchadoMIRigidRegistration)
+project(MIRigidRegistration)
  
 find_package(ITK REQUIRED)
 include(${ITK_USE_FILE})
  
-add_executable(MchadoMIRigidRegistration MACOSX_BUNDLE MchadoMIRigidRegistration.cxx)
-target_link_libraries(MchadoMIRigidRegistration ${ITK_LIBRARIES})
+add_executable(MIRigidRegistration MACOSX_BUNDLE MIRigidRegistration.cxx)
+target_link_libraries(MIRigidRegistration ${ITK_LIBRARIES})

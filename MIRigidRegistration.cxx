@@ -73,12 +73,12 @@ public:
   typedef itk::RegularStepGradientDescentOptimizerv4<double> OptimizerType;
   typedef   const OptimizerType *                            OptimizerPointer;
 
-  void Execute(itk::Object *caller, const itk::EventObject & event) ITK_OVERRIDE
+  void Execute(itk::Object *caller, const itk::EventObject & event) override
     {
     Execute( (const itk::Object *)caller, event);
     }
 
-  void Execute(const itk::Object * object, const itk::EventObject & event) ITK_OVERRIDE
+  void Execute(const itk::Object * object, const itk::EventObject & event) override
     {
     OptimizerPointer optimizer = static_cast< OptimizerPointer >( object );
     if( ! itk::IterationEvent().CheckEvent( &event ) )
@@ -251,7 +251,7 @@ int main( int argc, char *argv[] )
       registration->SetFixedImage(    fixedImageReader->GetOutput()    );
       registration->SetMovingImage(   movingImageReader->GetOutput()   );
 
-      // Setting initial configuration::
+      // Setting initial transform configuration::
       //
       TransformType::Pointer  initialTransform = TransformType::New();
 
@@ -298,8 +298,9 @@ int main( int argc, char *argv[] )
       optimizer->SetScales( optimizerScales );
 
       // Cinfiguring the optimizer
+      // Different line
 
-      optimizer->SetLearningRate( 0.2 );
+      optimizer->SetLearningRate( 0.1 );
       optimizer->SetMinimumStepLength( 0.001 );
       optimizer->SetNumberOfIterations( 300 );
       optimizer->ReturnBestParametersAndValueOn();
@@ -315,8 +316,8 @@ int main( int argc, char *argv[] )
 
       RegistrationType::ShrinkFactorsArrayType shrinkFactorsPerLevel;
       shrinkFactorsPerLevel.SetSize( numberOfLevels );
-      shrinkFactorsPerLevel[0] = 2;
-      shrinkFactorsPerLevel[1] = 1;
+      shrinkFactorsPerLevel[0] = 3;
+      shrinkFactorsPerLevel[1] = 2;
 
       RegistrationType::SmoothingSigmasArrayType smoothingSigmasPerLevel;
       smoothingSigmasPerLevel.SetSize( numberOfLevels );
@@ -445,7 +446,7 @@ int main( int argc, char *argv[] )
       resample->SetDefaultPixelValue( defaultPixelValue );
 
 
-      typedef  unsigned char  OutputPixelType;
+      typedef  float  OutputPixelType;
 
       typedef itk::Image< OutputPixelType, Dimension > OutputImageType;
 
@@ -458,7 +459,7 @@ int main( int argc, char *argv[] )
       WriterType::Pointer      writer =  WriterType::New();
       CastFilterType::Pointer  caster =  CastFilterType::New();
 
-      writer->SetFileName( "OutPut.mha" );
+      writer->SetFileName( "OutPut.nrrd" );
 
       caster->SetInput( resample->GetOutput() );
       writer->SetInput( caster->GetOutput()   );
@@ -492,14 +493,14 @@ int main( int argc, char *argv[] )
       identityTransform->SetIdentity();
       resample->SetTransform( identityTransform );
 
-      writer->SetFileName( "CheckBoardBefore.mha" );
+      writer->SetFileName( "CheckBoardBefore.nrrd" );
       writer->Update();
 
       // After registration =================
       // Set the last transformation obtainned in the registrations executions
 
       resample->SetTransform( registrationPass->GetTransform() );
-      writer->SetFileName( "CheckBoardAfter.mha" );
+      writer->SetFileName( "CheckBoardAfter.nrrd" );
       writer->Update();
 
       std::cout<<"Images saved!"<<std::endl;

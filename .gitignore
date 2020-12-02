@@ -5,8 +5,7 @@ debug/*
 CMakeLists.txt.user
 
 # ignore some resulting datafile
-data/CheckBoardAfter.mha
-data/CheckBoardBefore.mha
-data/OutPut.mha
+data/*.nrrd
+data/*.csv
 data/*.csv
 
