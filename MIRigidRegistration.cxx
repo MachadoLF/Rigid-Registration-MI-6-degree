@@ -300,9 +300,9 @@ int main( int argc, char *argv[] )
       // Cinfiguring the optimizer
       // Different line
 
-      optimizer->SetLearningRate( 0.1 );
-      optimizer->SetMinimumStepLength( 0.001 );
-      optimizer->SetNumberOfIterations( 300 );
+      optimizer->SetLearningRate( 1.0 );
+      optimizer->SetMinimumStepLength( 0.01 );
+      optimizer->SetNumberOfIterations( 200 );
       optimizer->ReturnBestParametersAndValueOn();
 
       // Create the Command observer and register it with the optimizer.
