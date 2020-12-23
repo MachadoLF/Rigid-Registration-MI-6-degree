@@ -34,6 +34,8 @@
 
 #include "itkVersorRigid3DTransform.h"
 #include "itkCenteredTransformInitializer.h"
+#include "itkTransformToDisplacementFieldFilter.h"
+#include "itkTransformFileWriter.h"
 
 #include <iostream>
 #include <fstream>
@@ -121,6 +123,7 @@ int main( int argc, char *argv[] )
 
   // registration pointer for passage;
   RegistrationType::Pointer registrationPass;
+  TransformType::Pointer finalTransform = TransformType::New();
 
   typedef itk::ImageFileReader< FixedImageType  > FixedImageReaderType;
   typedef itk::ImageFileReader< MovingImageType > MovingImageReaderType;
@@ -300,9 +303,9 @@ int main( int argc, char *argv[] )
       // Cinfiguring the optimizer
       // Different line
 
-      optimizer->SetLearningRate( 1.0 );
+      optimizer->SetLearningRate( 2.0 );
       optimizer->SetMinimumStepLength( 0.01 );
-      optimizer->SetNumberOfIterations( 200 );
+      optimizer->SetNumberOfIterations( 300 );
       optimizer->ReturnBestParametersAndValueOn();
 
       // Create the Command observer and register it with the optimizer.
@@ -312,17 +315,19 @@ int main( int argc, char *argv[] )
 
       // One level registration process without shrinking and smoothing.
       //
-      const unsigned int numberOfLevels = 2;
+      const unsigned int numberOfLevels = 1;
 
       RegistrationType::ShrinkFactorsArrayType shrinkFactorsPerLevel;
       shrinkFactorsPerLevel.SetSize( numberOfLevels );
       shrinkFactorsPerLevel[0] = 3;
-      shrinkFactorsPerLevel[1] = 2;
+      //shrinkFactorsPerLevel[1] = 2;
+      //shrinkFactorsPerLevel[2] = 1;
 
       RegistrationType::SmoothingSigmasArrayType smoothingSigmasPerLevel;
       smoothingSigmasPerLevel.SetSize( numberOfLevels );
-      smoothingSigmasPerLevel[0] = 1;
-      smoothingSigmasPerLevel[1] = 0;
+      //smoothingSigmasPerLevel[0] = 2;
+      //smoothingSigmasPerLevel[1] = 1;
+      smoothingSigmasPerLevel[0] = 0;
 
       registration->SetNumberOfLevels ( numberOfLevels );
       registration->SetSmoothingSigmasPerLevel( smoothingSigmasPerLevel );
@@ -352,7 +357,6 @@ int main( int argc, char *argv[] )
       //
       unsigned long numberOfIterations = optimizer->GetCurrentIteration();
 
-      TransformType::Pointer finalTransform = TransformType::New();
       finalTransform->SetFixedParameters( registration->GetOutput()->Get()->GetFixedParameters() );
       finalTransform->SetParameters( finalParameters );
 
@@ -423,8 +427,9 @@ int main( int argc, char *argv[] )
 
   if (save == "-s") {
 
-
+      //..............................................................
       // Writing OUTPUT images
+
       typedef itk::ResampleImageFilter<
               MovingImageType,
               FixedImageType >    ResampleFilterType;
@@ -436,7 +441,7 @@ int main( int argc, char *argv[] )
 
       FixedImageType::Pointer fixedImage = fixedImageReader->GetOutput();
 
-      PixelType defaultPixelValue = 100;
+      PixelType defaultPixelValue = 0;
 
       // Seting aditional resampling information.
       resample->SetSize(  fixedImage->GetLargestPossibleRegion().GetSize() );
@@ -459,7 +464,7 @@ int main( int argc, char *argv[] )
       WriterType::Pointer      writer =  WriterType::New();
       CastFilterType::Pointer  caster =  CastFilterType::New();
 
-      writer->SetFileName( "OutPut.nrrd" );
+      writer->SetFileName( "RegisteredImage.nrrd" );
 
       caster->SetInput( resample->GetOutput() );
       writer->SetInput( caster->GetOutput()   );
@@ -504,6 +509,60 @@ int main( int argc, char *argv[] )
       writer->Update();
 
       std::cout<<"Images saved!"<<std::endl;
+
+      // .............................................................
+      // Writing transform
+
+      // Writing Transform
+      using TransformWriterType = itk::TransformFileWriter;
+      TransformWriterType::Pointer transformWriter = TransformWriterType::New();
+      transformWriter->SetInput(finalTransform);
+      transformWriter->SetFileName("resultTransform.tfm");
+      transformWriter->Update();
+
+      // .............................................................
+
+        using VectorPixelType = itk::Vector<float, Dimension>;
+        using DisplacementFieldImageType = itk::Image<VectorPixelType, Dimension>;
+
+        using DisplacementFieldGeneratorType =
+          itk::TransformToDisplacementFieldFilter<DisplacementFieldImageType,
+      double>;
+
+        // Create an setup displacement field generator.
+        DisplacementFieldGeneratorType::Pointer dispfieldGenerator =
+          DisplacementFieldGeneratorType::New();
+        dispfieldGenerator->UseReferenceImageOn();
+        dispfieldGenerator->SetReferenceImage(fixedImage);
+        dispfieldGenerator->SetTransform(finalTransform);
+        try
+        {
+          dispfieldGenerator->Update();
+        }
+        catch (itk::ExceptionObject & err)
+        {
+          std::cerr << "Exception detected while generating deformation field";
+          std::cerr << " : " << err << std::endl;
+          return EXIT_FAILURE;
+        }
+
+        using FieldWriterType = itk::ImageFileWriter<DisplacementFieldImageType>;
+        FieldWriterType::Pointer fieldWriter = FieldWriterType::New();
+
+        fieldWriter->SetInput(dispfieldGenerator->GetOutput());
+
+        fieldWriter->SetFileName("DisplacementField.nrrd");
+        try
+        {
+          fieldWriter->Update();
+        }
+        catch (itk::ExceptionObject & excp)
+        {
+          std::cerr << "Exception thrown " << std::endl;
+          std::cerr << excp << std::endl;
+          return EXIT_FAILURE;
+        }
+        std::cout<<"Deformation Vector Field and Transform Saved!"<<std::endl;
   } else {
 
       std::cout<<"Images not saved!" <<std::endl;
