@@ -56,6 +56,61 @@ using FileType = std::ofstream;
 static FileType execution;
 static FileType optimization;
 
+//  at every change of stage and resolution level.
+
+template <typename TRegistration>
+class RegistrationInterfaceCommand : public itk::Command
+{
+public:
+  using Self = RegistrationInterfaceCommand;
+  using Superclass = itk::Command;
+  using Pointer = itk::SmartPointer<Self>;
+  itkNewMacro(Self);
+
+protected:
+  RegistrationInterfaceCommand() = default;
+
+public:
+  using RegistrationType = TRegistration;
+
+  // The Execute function simply calls another version of the \code{Execute()}
+  // method accepting a \code{const} input object
+  void
+  Execute(itk::Object * object, const itk::EventObject & event) override
+  {
+    Execute((const itk::Object *)object, event);
+  }
+
+  void
+  Execute(const itk::Object * object, const itk::EventObject & event) override
+  {
+    if (!(itk::MultiResolutionIterationEvent().CheckEvent(&event)))
+    {
+      return;
+    }
+
+    std::cout << "\nObserving from class " << object->GetNameOfClass();
+    if (!object->GetObjectName().empty())
+    {
+      std::cout << " \"" << object->GetObjectName() << "\"" << std::endl;
+    }
+
+    const auto * registration = static_cast<const RegistrationType *>(object);
+
+    unsigned int currentLevel = registration->GetCurrentLevel();
+    typename RegistrationType::ShrinkFactorsPerDimensionContainerType shrinkFactors =
+      registration->GetShrinkFactorsPerDimension(currentLevel);
+    typename RegistrationType::SmoothingSigmasArrayType smoothingSigmas =
+      registration->GetSmoothingSigmasPerLevel();
+
+    std::cout << "-------------------------------------" << std::endl;
+    std::cout << " Current multi-resolution level = " << currentLevel << std::endl;
+    std::cout << "    shrink factor = " << shrinkFactors << std::endl;
+    std::cout << "    smoothing sigma = " << smoothingSigmas[currentLevel] << std::endl;
+    std::cout << std::endl;
+  }
+};
+
 //  The following section of code implements a Command observer
 //  used to monitor the evolution of the registration process.
 //
@@ -95,6 +150,160 @@ public:
     }
 };
 
+const    unsigned int    Dimension = 3;
+typedef  float           PixelType;
+
+typedef itk::Image< PixelType, Dimension >  FixedImageType;
+typedef itk::Image< PixelType, Dimension >  MovingImageType;
+
+using TransformType = itk::VersorRigid3DTransform< double >;
+typedef itk::RegularStepGradientDescentOptimizerv4<double>     OptimizerType;
+typedef itk::ImageRegistrationMethodv4<
+                                  FixedImageType,
+                                  MovingImageType,
+                                  TransformType    > RegistrationType;
+typedef itk::ImageFileReader< FixedImageType  > FixedImageReaderType;
+typedef itk::ImageFileReader< MovingImageType > MovingImageReaderType;
+
+int SaveImages ( FixedImageType::Pointer fixedImage,
+                 MovingImageType::Pointer movingImage,
+                 TransformType::Pointer finalTransform){
+    //..............................................................
+    // Writing OUTPUT images
+
+    typedef itk::ResampleImageFilter<
+            MovingImageType,
+            FixedImageType >    ResampleFilterType;
+
+    ResampleFilterType::Pointer resample = ResampleFilterType::New();
+
+    resample->SetTransform( finalTransform );
+    resample->SetInput( movingImage );
+
+    PixelType defaultPixelValue = 0;
+
+    // Seting aditional resampling information.
+    resample->SetSize(  fixedImage->GetLargestPossibleRegion().GetSize() );
+    resample->SetOutputOrigin(  fixedImage->GetOrigin() );
+    resample->SetOutputSpacing( fixedImage->GetSpacing() );
+    resample->SetOutputDirection( fixedImage->GetDirection() );
+    resample->SetDefaultPixelValue( defaultPixelValue );
+
+    typedef  float  OutputPixelType;
+    const unsigned int Dimension = 3;
+
+    typedef itk::Image< OutputPixelType, Dimension > OutputImageType;
+
+    typedef itk::CastImageFilter<
+            FixedImageType,
+            OutputImageType > CastFilterType;
+
+    typedef itk::ImageFileWriter< OutputImageType >  WriterType;
+
+    WriterType::Pointer      writer =  WriterType::New();
+    CastFilterType::Pointer  caster =  CastFilterType::New();
+
+    writer->SetFileName( "RegisteredImage.nrrd" );
+
+    caster->SetInput( resample->GetOutput() );
+    writer->SetInput( caster->GetOutput()   );
+    writer->Update();
+
+    // Generate checkerboards before and after registration
+    //
+    typedef itk::CheckerBoardImageFilter< FixedImageType > CheckerBoardFilterType;
+
+    CheckerBoardFilterType::Pointer checker = CheckerBoardFilterType::New();
+
+    // Inputting the fixed image and the resampler filter
+    // inputted with the moving image.
+    // By changing the transform, one can export before or after
+    // registration results.
+
+    checker->SetInput1( fixedImage );
+    checker->SetInput2( resample->GetOutput() );
+
+    caster->SetInput( checker->GetOutput() );
+    writer->SetInput( caster->GetOutput()  );
+
+    resample->SetDefaultPixelValue( 0 );
+
+    // Before registration ================
+    // It will set the identity transform to the moving image
+    // resampling at - resample filter - .
+
+    TransformType::Pointer identityTransform = TransformType::New();
+    identityTransform->SetIdentity();
+    resample->SetTransform( identityTransform );
+
+    writer->SetFileName( "CheckBoardBefore.nrrd" );
+    writer->Update();
+
+    // After registration =================
+    // Set the last transformation obtainned in the registrations executions
+
+    resample->SetTransform( finalTransform );
+    writer->SetFileName( "CheckBoardAfter.nrrd" );
+    writer->Update();
+
+    std::cout<<"Images saved!"<<std::endl;
+
+    // .............................................................
+    // Writing transform
+
+    // Writing Transform
+    using TransformWriterType = itk::TransformFileWriter;
+    TransformWriterType::Pointer transformWriter = TransformWriterType::New();
+    transformWriter->SetInput(finalTransform);
+    transformWriter->SetFileName("finalTransform.tfm");
+    transformWriter->Update();
+
+    // .............................................................
+
+      using VectorPixelType = itk::Vector<float, Dimension>;
+      using DisplacementFieldImageType = itk::Image<VectorPixelType, Dimension>;
+
+      using DisplacementFieldGeneratorType =
+        itk::TransformToDisplacementFieldFilter<DisplacementFieldImageType,
+    double>;
+
+      // Create an setup displacement field generator.
+      DisplacementFieldGeneratorType::Pointer dispfieldGenerator =
+        DisplacementFieldGeneratorType::New();
+      dispfieldGenerator->UseReferenceImageOn();
+      dispfieldGenerator->SetReferenceImage(fixedImage);
+      dispfieldGenerator->SetTransform(finalTransform);
+      try
+      {
+        dispfieldGenerator->Update();
+      }
+      catch (itk::ExceptionObject & err)
+      {
+        std::cerr << "Exception detected while generating deformation field";
+        std::cerr << " : " << err << std::endl;
+        return EXIT_FAILURE;
+      }
+
+      using FieldWriterType = itk::ImageFileWriter<DisplacementFieldImageType>;
+      FieldWriterType::Pointer fieldWriter = FieldWriterType::New();
+
+      fieldWriter->SetInput(dispfieldGenerator->GetOutput());
+
+      fieldWriter->SetFileName("DisplacementField.nrrd");
+      try
+      {
+        fieldWriter->Update();
+      }
+      catch (itk::ExceptionObject & excp)
+      {
+        std::cerr << "Exception thrown " << std::endl;
+        std::cerr << excp << std::endl;
+        return EXIT_FAILURE;
+      }
+      std::cout<<"Deformation Vector Field and Transform Saved!"<<std::endl;
+
+      return EXIT_SUCCESS;
+}
 
 int main( int argc, char *argv[] )
 {
@@ -108,25 +317,10 @@ int main( int argc, char *argv[] )
     return EXIT_FAILURE;
     }
 
-  const    unsigned int    Dimension = 3;
-  typedef  float           PixelType;
 
-  typedef itk::Image< PixelType, Dimension >  FixedImageType;
-  typedef itk::Image< PixelType, Dimension >  MovingImageType;
-
-  using TransformType = itk::VersorRigid3DTransform< double >;
-  typedef itk::RegularStepGradientDescentOptimizerv4<double>     OptimizerType;
-  typedef itk::ImageRegistrationMethodv4<
-                                    FixedImageType,
-                                    MovingImageType,
-                                    TransformType    > RegistrationType;
-
-  // registration pointer for passage;
-  RegistrationType::Pointer registrationPass;
+  // Final Transform object;
   TransformType::Pointer finalTransform = TransformType::New();
 
-  typedef itk::ImageFileReader< FixedImageType  > FixedImageReaderType;
-  typedef itk::ImageFileReader< MovingImageType > MovingImageReaderType;
 
   FixedImageReaderType::Pointer  fixedImageReader  = FixedImageReaderType::New();
   MovingImageReaderType::Pointer movingImageReader = MovingImageReaderType::New();
@@ -160,7 +354,8 @@ int main( int argc, char *argv[] )
               std::cout<<std::endl;
               std::string fileName = type + "_Optimization.csv";
               optimization.open (fileName);
-              optimization <<"q-value,iterations,displacementVector,displacementError,angle,angleError"<<std::endl;        
+              std::string metricType = type + "MetricValue";
+              optimization <<"q-value,MetricValue"<<std::endl;
           }else if(strategy == "-e"){
 
               // strategy = -o -> will perform a single execution:
@@ -203,7 +398,6 @@ int main( int argc, char *argv[] )
       }
 
       RegistrationType::Pointer   registration  = RegistrationType::New();
-      registrationPass = registration;
 
       OptimizerType::Pointer       optimizer    = OptimizerType::New();
       registration->SetOptimizer(     optimizer     );
@@ -265,9 +459,9 @@ int main( int argc, char *argv[] )
           TransformInitializerType::Pointer initializer =
           TransformInitializerType::New();
 
-      initializer->SetTransform(   initialTransform );
+      initializer->SetTransform(  initialTransform );
       initializer->SetFixedImage(  fixedImageReader->GetOutput() );
-      initializer->SetMovingImage( movingImageReader->GetOutput() );
+      initializer->SetMovingImage(  movingImageReader->GetOutput() );
       initializer->MomentsOn();
 
       initializer->InitializeTransform();
@@ -303,7 +497,7 @@ int main( int argc, char *argv[] )
       // Cinfiguring the optimizer
       // Different line
 
-      optimizer->SetLearningRate( 2.0 );
+      optimizer->SetLearningRate( 1.0 );
       optimizer->SetMinimumStepLength( 0.01 );
       optimizer->SetNumberOfIterations( 300 );
       optimizer->ReturnBestParametersAndValueOn();
@@ -315,23 +509,27 @@ int main( int argc, char *argv[] )
 
       // One level registration process without shrinking and smoothing.
       //
-      const unsigned int numberOfLevels = 1;
+      const unsigned int numberOfLevels = 3;
 
       RegistrationType::ShrinkFactorsArrayType shrinkFactorsPerLevel;
       shrinkFactorsPerLevel.SetSize( numberOfLevels );
       shrinkFactorsPerLevel[0] = 3;
-      //shrinkFactorsPerLevel[1] = 2;
-      //shrinkFactorsPerLevel[2] = 1;
+      shrinkFactorsPerLevel[1] = 2;
+      shrinkFactorsPerLevel[2] = 1;
 
       RegistrationType::SmoothingSigmasArrayType smoothingSigmasPerLevel;
       smoothingSigmasPerLevel.SetSize( numberOfLevels );
-      //smoothingSigmasPerLevel[0] = 2;
-      //smoothingSigmasPerLevel[1] = 1;
-      smoothingSigmasPerLevel[0] = 0;
+      smoothingSigmasPerLevel[0] = 2;
+      smoothingSigmasPerLevel[1] = 1;
+      smoothingSigmasPerLevel[2] = 0;
 
       registration->SetNumberOfLevels ( numberOfLevels );
       registration->SetSmoothingSigmasPerLevel( smoothingSigmasPerLevel );
       registration->SetShrinkFactorsPerLevel( shrinkFactorsPerLevel );
+
+      using RigidCommandRegistrationType = RegistrationInterfaceCommand<RegistrationType>;
+      RigidCommandRegistrationType::Pointer command = RigidCommandRegistrationType::New();
+      registration->AddObserver(itk::MultiResolutionIterationEvent(), command);
 
       try
         {
@@ -355,16 +553,19 @@ int main( int argc, char *argv[] )
 
       // For stability reasons it may be desirable to round up the values of translation
       //
-      unsigned long numberOfIterations = optimizer->GetCurrentIteration();
+      // unsigned long numberOfIterations = optimizer->GetCurrentIteration();
 
       finalTransform->SetFixedParameters( registration->GetOutput()->Get()->GetFixedParameters() );
       finalTransform->SetParameters( finalParameters );
+
+      double metricValue = optimizer->GetValue();
 
       TransformType::MatrixType matrix = finalTransform->GetMatrix();
       TransformType::OffsetType offset = finalTransform->GetOffset();
       std::cout << "Matrix = " << std::endl << matrix << std::endl;
       std::cout << "Offset = " << std::endl << offset << std::endl;
 
+      /*
       // Calculate the relative error considering the expected values for x, y, and z components
       //
       double angleDegree = std::asin(matrix[0][1]) * (180.0/3.141592653589793238463);
@@ -374,10 +575,10 @@ int main( int argc, char *argv[] )
 
       double displacementError = 15.0 - displacementVector;
       double angleError = 10.0 - angleDegree;
-
+      */
 
       if (type == "Mattes" || strategy == "-e"){
-
+          /*
           execution <<"NumberOfIterations = " << numberOfIterations << std::endl;
           execution <<"FinalDisplacement = "  << displacementVector << std::endl;
           execution <<"DisplacementError = "  << displacementError << std::endl;
@@ -394,12 +595,27 @@ int main( int argc, char *argv[] )
           std::cout << " Angle           = "    << angleDegree << std::endl;
           std::cout << " AngleError      = "    << angleError << std::endl;
           std::cout << std::endl;
+          */
+
+          // Printing out results
+          // Initializing the save flag.
+          //
+          std::string save;
+          save = argv[4];
+
+          if (save == "-s") {
+             SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform);
+
+          } else {
+             std::cout<<"Images not saved!" <<std::endl;
+             std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
+          }
 
           break;
 
       } else {
-          optimization <<q<<","<<numberOfIterations<<","
-                      <<displacementVector<<","<<displacementError<<","<<angleDegree<<","<<angleError<<std::endl;
+          optimization <<q<<","<<metricValue<<std::endl;
+          /*
 
           std::cout << std::endl;
           std::cout << " Result            "    << std::endl;
@@ -410,164 +626,23 @@ int main( int argc, char *argv[] )
           std::cout << " Displacement    = "    << displacementVector << std::endl;
           std::cout << " Displacement Error = " << displacementError << std::endl;
           std::cout << std::endl;
-      }      
-   }
-
-
-  // Printing out results
-
-  // Initializing the save flag.
-  std::string save;
-  if (argc > 6){
-      save = argv[6];
-  }
-  if (type == "Mattes" && argc > 4){
-      save = argv[4];
-  }
-
-  if (save == "-s") {
-
-      //..............................................................
-      // Writing OUTPUT images
-
-      typedef itk::ResampleImageFilter<
-              MovingImageType,
-              FixedImageType >    ResampleFilterType;
-
-      ResampleFilterType::Pointer resample = ResampleFilterType::New();
-
-      resample->SetTransform( registrationPass->GetTransform() );
-      resample->SetInput( movingImageReader->GetOutput() );
-
-      FixedImageType::Pointer fixedImage = fixedImageReader->GetOutput();
-
-      PixelType defaultPixelValue = 0;
-
-      // Seting aditional resampling information.
-      resample->SetSize(  fixedImage->GetLargestPossibleRegion().GetSize() );
-      resample->SetOutputOrigin(  fixedImage->GetOrigin() );
-      resample->SetOutputSpacing( fixedImage->GetSpacing() );
-      resample->SetOutputDirection( fixedImage->GetDirection() );
-      resample->SetDefaultPixelValue( defaultPixelValue );
-
-
-      typedef  float  OutputPixelType;
-
-      typedef itk::Image< OutputPixelType, Dimension > OutputImageType;
-
-      typedef itk::CastImageFilter<
-              FixedImageType,
-              OutputImageType > CastFilterType;
-
-      typedef itk::ImageFileWriter< OutputImageType >  WriterType;
-
-      WriterType::Pointer      writer =  WriterType::New();
-      CastFilterType::Pointer  caster =  CastFilterType::New();
-
-      writer->SetFileName( "RegisteredImage.nrrd" );
-
-      caster->SetInput( resample->GetOutput() );
-      writer->SetInput( caster->GetOutput()   );
-      writer->Update();
-
-
-      // Generate checkerboards before and after registration
+          */
+      } 
+      
+      // Printing out results
+      // Initializing the save flag.
       //
-      typedef itk::CheckerBoardImageFilter< FixedImageType > CheckerBoardFilterType;
+      std::string save;
+      save = argv[6];
 
-      CheckerBoardFilterType::Pointer checker = CheckerBoardFilterType::New();
+      if (save == "-s") {
+         SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform);
 
-      // Inputting the fixed image and the resampler filter
-      // inputted with the moving image.
-      // By changing the transform, one can export before or after
-      // registration results.
-
-      checker->SetInput1( fixedImage );
-      checker->SetInput2( resample->GetOutput() );
-
-      caster->SetInput( checker->GetOutput() );
-      writer->SetInput( caster->GetOutput()  );
-
-      resample->SetDefaultPixelValue( 0 );
-
-      // Before registration ================
-      // It will set the identity transform to the moving image
-      // resampling at - resample filter - .
-
-      TransformType::Pointer identityTransform = TransformType::New();
-      identityTransform->SetIdentity();
-      resample->SetTransform( identityTransform );
-
-      writer->SetFileName( "CheckBoardBefore.nrrd" );
-      writer->Update();
-
-      // After registration =================
-      // Set the last transformation obtainned in the registrations executions
-
-      resample->SetTransform( registrationPass->GetTransform() );
-      writer->SetFileName( "CheckBoardAfter.nrrd" );
-      writer->Update();
-
-      std::cout<<"Images saved!"<<std::endl;
-
-      // .............................................................
-      // Writing transform
-
-      // Writing Transform
-      using TransformWriterType = itk::TransformFileWriter;
-      TransformWriterType::Pointer transformWriter = TransformWriterType::New();
-      transformWriter->SetInput(finalTransform);
-      transformWriter->SetFileName("resultTransform.tfm");
-      transformWriter->Update();
-
-      // .............................................................
-
-        using VectorPixelType = itk::Vector<float, Dimension>;
-        using DisplacementFieldImageType = itk::Image<VectorPixelType, Dimension>;
-
-        using DisplacementFieldGeneratorType =
-          itk::TransformToDisplacementFieldFilter<DisplacementFieldImageType,
-      double>;
-
-        // Create an setup displacement field generator.
-        DisplacementFieldGeneratorType::Pointer dispfieldGenerator =
-          DisplacementFieldGeneratorType::New();
-        dispfieldGenerator->UseReferenceImageOn();
-        dispfieldGenerator->SetReferenceImage(fixedImage);
-        dispfieldGenerator->SetTransform(finalTransform);
-        try
-        {
-          dispfieldGenerator->Update();
-        }
-        catch (itk::ExceptionObject & err)
-        {
-          std::cerr << "Exception detected while generating deformation field";
-          std::cerr << " : " << err << std::endl;
-          return EXIT_FAILURE;
-        }
-
-        using FieldWriterType = itk::ImageFileWriter<DisplacementFieldImageType>;
-        FieldWriterType::Pointer fieldWriter = FieldWriterType::New();
-
-        fieldWriter->SetInput(dispfieldGenerator->GetOutput());
-
-        fieldWriter->SetFileName("DisplacementField.nrrd");
-        try
-        {
-          fieldWriter->Update();
-        }
-        catch (itk::ExceptionObject & excp)
-        {
-          std::cerr << "Exception thrown " << std::endl;
-          std::cerr << excp << std::endl;
-          return EXIT_FAILURE;
-        }
-        std::cout<<"Deformation Vector Field and Transform Saved!"<<std::endl;
-  } else {
-
-      std::cout<<"Images not saved!" <<std::endl;
-      std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
-  }
-
+      } else {
+         std::cout<<"Images not saved!" <<std::endl;
+         std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
+      }
+   } // q-value loop;
+  
   return EXIT_SUCCESS;
 }
