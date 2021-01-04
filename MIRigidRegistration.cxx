@@ -167,7 +167,8 @@ typedef itk::ImageFileReader< MovingImageType > MovingImageReaderType;
 
 int SaveImages ( FixedImageType::Pointer fixedImage,
                  MovingImageType::Pointer movingImage,
-                 TransformType::Pointer finalTransform){
+                 TransformType::Pointer finalTransform,
+                 unsigned int qValeu){
     //..............................................................
     // Writing OUTPUT images
 
@@ -361,6 +362,7 @@ int main( int argc, char *argv[] )
               // strategy = -o -> will perform a single execution:
               std::cout<<"Execution routine choosen! "<<std::endl;
               std::cout<<std::endl;
+              floatstd::setprecision(5) << f
               std::string fileName = type + "_Execution_q=" + std::to_string(qValue) + ".csv";
               execution.open (fileName);
               execution <<"iterations,metric_value"<<std::endl;
