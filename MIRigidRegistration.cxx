@@ -38,6 +38,8 @@
 #include "itkTransformFileWriter.h"
 
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <fstream>
 
 #include "itkImageFileReader.h"
@@ -168,7 +170,7 @@ typedef itk::ImageFileReader< MovingImageType > MovingImageReaderType;
 int SaveImages ( FixedImageType::Pointer fixedImage,
                  MovingImageType::Pointer movingImage,
                  TransformType::Pointer finalTransform,
-                 unsigned int qValeu){
+                 std::string qValueStr){
     //..............................................................
     // Writing OUTPUT images
 
@@ -204,7 +206,7 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
     WriterType::Pointer      writer =  WriterType::New();
     CastFilterType::Pointer  caster =  CastFilterType::New();
 
-    writer->SetFileName( "RegisteredImage.nrrd" );
+    writer->SetFileName("RegisteredImage_q=" + qValueStr + ".nrrd");
 
     caster->SetInput( resample->GetOutput() );
     writer->SetInput( caster->GetOutput()   );
@@ -237,14 +239,14 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
     identityTransform->SetIdentity();
     resample->SetTransform( identityTransform );
 
-    writer->SetFileName( "CheckBoardBefore.nrrd" );
+    writer->SetFileName( "CheckBoardBefore_q=" + qValueStr + ".nrrd" );
     writer->Update();
 
     // After registration =================
     // Set the last transformation obtainned in the registrations executions
 
     resample->SetTransform( finalTransform );
-    writer->SetFileName( "CheckBoardAfter.nrrd" );
+    writer->SetFileName( "CheckBoardAfter_q=" + qValueStr + ".nrrd" );
     writer->Update();
 
     std::cout<<"Images saved!"<<std::endl;
@@ -256,7 +258,7 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
     using TransformWriterType = itk::TransformFileWriter;
     TransformWriterType::Pointer transformWriter = TransformWriterType::New();
     transformWriter->SetInput(finalTransform);
-    transformWriter->SetFileName("finalTransform.tfm");
+    transformWriter->SetFileName("finalTransform_q=" + qValueStr + ".tfm");
     transformWriter->Update();
 
     // .............................................................
@@ -290,7 +292,7 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
 
       fieldWriter->SetInput(dispfieldGenerator->GetOutput());
 
-      fieldWriter->SetFileName("DisplacementField.nrrd");
+      fieldWriter->SetFileName("DisplacementField_q=" + qValueStr + ".nrrd");
       try
       {
         fieldWriter->Update();
@@ -362,8 +364,9 @@ int main( int argc, char *argv[] )
               // strategy = -o -> will perform a single execution:
               std::cout<<"Execution routine choosen! "<<std::endl;
               std::cout<<std::endl;
-              floatstd::setprecision(5) << f
-              std::string fileName = type + "_Execution_q=" + std::to_string(qValue) + ".csv";
+              std::stringstream qValueString;
+              qValueString << std::fixed << std::setprecision(2) << qValue;
+              std::string fileName = type + "_Execution_q=" + qValueString.str() + ".csv";
               execution.open (fileName);
               execution <<"iterations,metric_value"<<std::endl;
           }
@@ -397,7 +400,10 @@ int main( int argc, char *argv[] )
       if (strategy == "-e" ){
           // meaning is a single execution with a q-metric
           q = qValue;
+          std::cout<< "q-Value = "<<q<<std::endl;
       }
+
+      std::cout<< "q-Value = "<<q<<std::endl;
 
       RegistrationType::Pointer   registration  = RegistrationType::New();
 
@@ -606,7 +612,9 @@ int main( int argc, char *argv[] )
           save = argv[4];
 
           if (save == "-s") {
-             SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform);
+             std::stringstream qValueString;
+             qValueString << std::fixed << std::setprecision(2) << q;
+             SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform, qValueString.str());
 
           } else {
              std::cout<<"Images not saved!" <<std::endl;
@@ -638,7 +646,9 @@ int main( int argc, char *argv[] )
       save = argv[6];
 
       if (save == "-s") {
-         SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform);
+          std::stringstream qValueString;
+          qValueString << std::fixed << std::setprecision(2) << q;
+          SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform, qValueString.str());
 
       } else {
          std::cout<<"Images not saved!" <<std::endl;
