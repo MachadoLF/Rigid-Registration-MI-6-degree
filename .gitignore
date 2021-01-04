@@ -5,7 +5,4 @@ debug/*
 CMakeLists.txt.user
 
 # ignore some resulting datafile
-data/*.nrrd
-data/*.csv
-data/*.csv
-
+data/*
