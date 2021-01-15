@@ -395,7 +395,7 @@ int main( int argc, char *argv[] )
   }
 
 
-  for (double q = 0; q <= qValue; q += 0.01){
+  for (double q = 0.01; q <= qValue; q += 0.01){
 
       if (strategy == "-e" ){
           // meaning is a single execution with a q-metric
