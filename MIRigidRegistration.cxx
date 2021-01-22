@@ -315,7 +315,7 @@ int main( int argc, char *argv[] )
     std::cerr << "Missing Parameters " << std::endl;
     std::cerr << "Usage: " << argv[0] << std::endl;
     std::cerr << " fixedImageFile   movingImageFile  MetricType ('Mattes' 'Tsallis' 'TsallisNorm') ";
-    std::cerr <<  "[qValue]  [strategy] ('-o' to optimization, '-e' to execution)" << std::endl;
+    std::cerr <<  "[qValue] [strategy] ('-o' to optimization, '-e' to execution)" << std::endl;
     std::cerr << " [save images] ('-s' for saving, Null, for not.) "<< std::endl;
     return EXIT_FAILURE;
     }
@@ -395,12 +395,12 @@ int main( int argc, char *argv[] )
   }
 
 
-  for (double q = 0.01; q <= qValue; q += 0.01){
+  for (double q = 0.01; q < qValue; q += 0.01){
 
       if (strategy == "-e" ){
           // meaning is a single execution with a q-metric
           q = qValue;
-          std::cout<< "q-Value = "<<q<<std::endl;
+          // std::cout<< "q-Value = "<<q<<std::endl;
       }
 
       std::cout<< "q-Value = "<<q<<std::endl;
@@ -573,38 +573,28 @@ int main( int argc, char *argv[] )
       std::cout << "Matrix = " << std::endl << matrix << std::endl;
       std::cout << "Offset = " << std::endl << offset << std::endl;
 
-      /*
-      // Calculate the relative error considering the expected values for x, y, and z components
-      //
-      double angleDegree = std::asin(matrix[0][1]) * (180.0/3.141592653589793238463);
-      //std::cout << "Angle = " << angleDegree << std::endl;
+      if ( strategy == "-e" && type != "Mattes" ){
+          
+          // Printing out results
+          // Initializing the save flag.
+          //
+          std::string save;
+          save = argv[6];
 
-      double displacementVector = sqrt(offset[0]*offset[0] + offset[2]*offset[2] + offset[3]*offset[3]);
+          if (save == "-s") {
+             std::stringstream qValueString;
+             qValueString << std::fixed << std::setprecision(2) << q;
+             SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform, qValueString.str());
 
-      double displacementError = 15.0 - displacementVector;
-      double angleError = 10.0 - angleDegree;
-      */
+          } else {
+             std::cout<<"Images not saved!" <<std::endl;
+             std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
+          }
 
-      if (type == "Mattes" || strategy == "-e"){
-          /*
-          execution <<"NumberOfIterations = " << numberOfIterations << std::endl;
-          execution <<"FinalDisplacement = "  << displacementVector << std::endl;
-          execution <<"DisplacementError = "  << displacementError << std::endl;
-          execution <<"FinalAngle = "         << angle <<std::endl;
-          execution <<"AngleError = "         << angleError << std::endl;
-          execution.close();
+          break;
 
-          std::cout << std::endl;
-          std::cout << " Result            "    << std::endl;
-          std::cout << " qValue          = "    << q << std::endl;
-          std::cout << " Number of Iterations = " << numberOfIterations << std::endl;
-          std::cout << " Displacement    = "    << displacementVector << std::endl;
-          std::cout << " Displacement Error = " << displacementError << std::endl;
-          std::cout << " Angle           = "    << angleDegree << std::endl;
-          std::cout << " AngleError      = "    << angleError << std::endl;
-          std::cout << std::endl;
-          */
-
+      } else if ( type == "Mattes" ) {
+          
           // Printing out results
           // Initializing the save flag.
           //
@@ -621,23 +611,10 @@ int main( int argc, char *argv[] )
              std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
           }
 
-          break;
-
-      } else {
-          optimization <<q<<","<<metricValue<<std::endl;
-          /*
-
-          std::cout << std::endl;
-          std::cout << " Result            "    << std::endl;
-          std::cout << " qValue          = "    << q << std::endl;
-          std::cout << " Number of Iterations = " << numberOfIterations<< std::endl;
-          std::cout << " Angle           = "    << angleDegree << std::endl;
-          std::cout << " AngleError      = "    << angleError << std::endl;
-          std::cout << " Displacement    = "    << displacementVector << std::endl;
-          std::cout << " Displacement Error = " << displacementError << std::endl;
-          std::cout << std::endl;
-          */
-      } 
+          break;          
+      }
+      
+      optimization <<q<<","<<metricValue<<std::endl;
       
       // Printing out results
       // Initializing the save flag.
