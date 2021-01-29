@@ -1,13 +1,13 @@
 #!/bin/bash
 # CLI ITK module location 
-exeDir=/home/9679247/Documentos/Doutorado/Registration-Repos/Rigid-Registration-MI-6-degree/debug
+exeDir=/home/leonardo/Documents/Doutorado/Image-Registration/Rigid-Registration-MI-6-degree/debug
 # Patient folders location
-dataDir=/home/9679247/Documentos/Doutorado/q-Evaluation-Project-Greg
+dataDir=/home/leonardo/Documents/Doutorado/q-Evaluation-Rig-Reg-Projeto-Greg
 
 cd $dataDir
 
-#metricTypeFolder="Tsallis"
-metricTypeFolder="TsallisNorm"
+metricTypeFolder="Tsallis"
+#metricTypeFolder="TsallisNorm"
 #metricTypeFolder="Mattes"
 
 #listing only folders
@@ -15,40 +15,40 @@ for folder in `ls -d -- 0*/`; do
 	
 	# entering inside each image folder
 	# Verifying if T1 and CT exists before calling the .exe CLI
-	#folderName=$(echo "$folder" | sed -e 's/.$//')
+	folderName=$(echo "$folder" | sed -e 's/.$//')
 	
-	#if [ "$folderName" == "001" ]; then
+	if [ "$folderName" == "001" ]; then
 	#if [ "$folder" = "$dataDir/022/" ]; then
-	cd $dataDir/$folder
-	if t1=`ls -c -ltd -- *T1*.nrrd`; then
-		T1file=$dataDir/$folder*T1*.nrrd
-		if ct=`ls -c -ltd -- *CT*.nrrd`; then
-			CTfile=$dataDir/$folder*CT*.nrrd	# found T1 and CT file!
-			
-			echo "Patient $folder."
+		cd $dataDir/$folder
+		if t1=`ls -c -ltd -- *T1*.nrrd`; then
+			T1file=$dataDir/$folder*T1*.nrrd
+			if ct=`ls -c -ltd -- *CT*.nrrd`; then
+				CTfile=$dataDir/$folder*CT*.nrrd	# found T1 and CT file!
+				
+				echo "Patient $folder."
 
-			# Calling CLI and sending CT and T1 from each folder;
-			# We will consider CT as the fixed image and T1 as the moving one;
-			
-			# First we need to check if the metric type folder exists
-			if test -d "$dataDir/$folder$metricTypeFolder"; then
-				cd $dataDir/$folder/$metricTypeFolder
-				ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=100 $exeDir/MIRigidRegistration $CTfile $T1file $metricTypeFolder 1.0 -e -s  
+				# Calling CLI and sending CT and T1 from each folder;
+				# We will consider CT as the fixed image and T1 as the moving one;
+				
+				# First we need to check if the metric type folder exists
+				if test -d "$dataDir/$folder$metricTypeFolder"; then
+					cd $dataDir/$folder/$metricTypeFolder
+					ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=100 $exeDir/MIRigidRegistration $CTfile $T1file $metricTypeFolder 0.6 -e -s  
+				else
+					mkdir $dataDir/$folder$metricTypeFolder
+					cd $dataDir/$folder/$metricTypeFolder
+					ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=100 $exeDir/MIRigidRegistration $CTfile $T1file $metricTypeFolder 0.6 -e -s
+				fi
+							
 			else
-				mkdir $dataDir/$folder$metricTypeFolder
-				cd $dataDir/$folder/$metricTypeFolder
-				ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=100 $exeDir/MIRigidRegistration $CTfile $T1file $metricTypeFolder 1.0 -e -s
-			fi
-						
+				echo "CT file not found"
+			fi	
 		else
-			echo "CT file not found"
-		fi	
+			echo "T1 file not found"
+		fi
 	else
-		echo "T1 file not found"
+		echo "Not this one!"
 	fi
-	#else
-	#	echo "Not this one!"
-	#fi
 
 done
 #echo $i

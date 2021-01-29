@@ -398,7 +398,7 @@ int main( int argc, char *argv[] )
   for (double q = 0.01; q < qValue; q += 0.01){
 
       if (strategy == "-e" ){
-          // meaning is a single execution with a q-metric
+          // meaning is a single execution with a q-metric. Before repeating the loop the code break.
           q = qValue;
           // std::cout<< "q-Value = "<<q<<std::endl;
       }
@@ -412,10 +412,16 @@ int main( int argc, char *argv[] )
 
       // Metric check configuration;
       //
-      unsigned int numberOfBins = 50;
+      unsigned int numberOfBins = 24;
+
+      std::cout<<"Number of Bins = "<<numberOfBins<<std::endl;
 
       // Choosing the metric type.
       if (type == "Tsallis"){
+          // for q = 1.0 one should use Mattes Entropy
+          if (q == 1.0 ) {
+              goto mattes;
+          }
           typedef itk::MachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisMetricType;
           TsallisMetricType::Pointer tsallisMetric = TsallisMetricType::New();
 
@@ -429,6 +435,11 @@ int main( int argc, char *argv[] )
           registration->SetMetric( tsallisMetric );
       }
       else if (type == "TsallisNorm"){
+          // for q = 1.0 one should use Mattes Entropy
+          if (q == 1.0 ) {
+              goto mattes;
+          }
+
           typedef itk::NormalizedMachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisNormMetricType;
           TsallisNormMetricType::Pointer tsallisNormMetric = TsallisNormMetricType::New();
 
@@ -442,6 +453,9 @@ int main( int argc, char *argv[] )
           registration->SetMetric( tsallisNormMetric  );
       }
       else if (type == "Mattes"){
+          mattes:
+          std::cout<<"Using Mattes Entropy Class."<<std::endl;
+
           typedef itk::MattesMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > MattesMetricType;
           MattesMetricType::Pointer  mattesMetric = MattesMetricType::New();
 
@@ -506,9 +520,10 @@ int main( int argc, char *argv[] )
       // Different line
 
       optimizer->SetLearningRate( 1.0 );
-      optimizer->SetMinimumStepLength( 0.01 );
+      optimizer->SetMinimumStepLength( 0.001 );
       optimizer->SetNumberOfIterations( 300 );
       optimizer->ReturnBestParametersAndValueOn();
+      // optimizer->SetGradientMagnitudeTolerance(0.0001);
 
       // Create the Command observer and register it with the optimizer.
       //
