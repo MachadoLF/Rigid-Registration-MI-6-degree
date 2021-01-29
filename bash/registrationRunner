@@ -15,6 +15,9 @@ for folder in `ls -d -- 0*/`; do
 	
 	# entering inside each image folder
 	# Verifying if T1 and CT exists before calling the .exe CLI
+	#folderName=$(echo "$folder" | sed -e 's/.$//')
+	
+	#if [ "$folderName" == "001" ]; then
 	#if [ "$folder" = "$dataDir/022/" ]; then
 	cd $dataDir/$folder
 	if t1=`ls -c -ltd -- *T1*.nrrd`; then
@@ -30,11 +33,11 @@ for folder in `ls -d -- 0*/`; do
 			# First we need to check if the metric type folder exists
 			if test -d "$dataDir/$folder$metricTypeFolder"; then
 				cd $dataDir/$folder/$metricTypeFolder
-				ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=100 $exeDir/MIRigidRegistration $CTfile $T1file $metricTypeFolder 1.51 -o -s  
+				ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=100 $exeDir/MIRigidRegistration $CTfile $T1file $metricTypeFolder 1.0 -e -s  
 			else
 				mkdir $dataDir/$folder$metricTypeFolder
 				cd $dataDir/$folder/$metricTypeFolder
-				ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=100 $exeDir/MIRigidRegistration $CTfile $T1file $metricTypeFolder 1.51 -o -s
+				ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=100 $exeDir/MIRigidRegistration $CTfile $T1file $metricTypeFolder 1.0 -e -s
 			fi
 						
 		else
