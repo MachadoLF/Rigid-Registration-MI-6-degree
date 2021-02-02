@@ -315,7 +315,7 @@ int main( int argc, char *argv[] )
     std::cerr << "Missing Parameters " << std::endl;
     std::cerr << "Usage: " << argv[0] << std::endl;
     std::cerr << " fixedImageFile   movingImageFile  MetricType ('Mattes' 'Tsallis' 'TsallisNorm') ";
-    std::cerr <<  "[qValue] [strategy] ('-o' to optimization, '-e' to execution)" << std::endl;
+    std::cerr << " [qValue] [strategy] ('-o' to optimization, '-e' to execution)" << std::endl;
     std::cerr << " [save images] ('-s' for saving, Null, for not.) "<< std::endl;
     return EXIT_FAILURE;
     }
@@ -389,7 +389,7 @@ int main( int argc, char *argv[] )
 
       std::cerr << "Incorrect Parameters " << std::endl;
       std::cerr << " fixedImageFile   movingImageFile  MetricType ('Mattes' 'Tsallis' 'TsallisNorm') ";
-      std::cerr <<  "[qValue]  [strategy] ('-o' to optimization, '-e' to execution)" << std::endl;
+      std::cerr << " [qValue]  [strategy] ('-o' to optimization, '-e' to execution)" << std::endl;
       std::cerr << " [save images] ('-s' for saving, Null, for not.) "<< std::endl;
       return EXIT_FAILURE;
   }
@@ -412,7 +412,7 @@ int main( int argc, char *argv[] )
 
       // Metric check configuration;
       //
-      unsigned int numberOfBins = 24;
+      unsigned int numberOfBins = 50;
 
       std::cout<<"Number of Bins = "<<numberOfBins<<std::endl;
 
@@ -474,6 +474,7 @@ int main( int argc, char *argv[] )
       //
       TransformType::Pointer  initialTransform = TransformType::New();
 
+
       using TransformInitializerType = itk::CenteredTransformInitializer<
           TransformType,
           FixedImageType,
@@ -502,6 +503,16 @@ int main( int argc, char *argv[] )
       initialTransform->SetRotation( rotation );
 
       registration->SetInitialTransform( initialTransform );
+
+      /*
+      TransformType::Pointer  initialTransform0 = initialTransform;
+      initialTransform0->SetIdentity();
+      std::cout<<"Saving raw DVF to assess initial difference."<<std::endl;
+      std::stringstream qValueString;
+      qValueString << std::fixed << std::setprecision(2) << q;
+      SaveImages(fixedImageReader->GetOutput(),movingImageReader->GetOutput(),initialTransform0, qValueString.str());
+      std::cout<<"Saved."<<std::endl;
+      //break; */
 
       // Parameter scale setter
       //
