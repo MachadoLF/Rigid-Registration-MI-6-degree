@@ -395,15 +395,12 @@ int main( int argc, char *argv[] )
   }
 
 
-  for (double q = 0.01; q < qValue; q += 0.01){
+  for (double q = 0.01; q <= qValue; q += 0.01){
 
       if (strategy == "-e" ){
           // meaning is a single execution with a q-metric
           q = qValue;
-          // std::cout<< "q-Value = "<<q<<std::endl;
-      }
-
-      std::cout<< "q-Value = "<<q<<std::endl;
+      } 
 
       RegistrationType::Pointer   registration  = RegistrationType::New();
 
@@ -442,6 +439,9 @@ int main( int argc, char *argv[] )
           registration->SetMetric( tsallisNormMetric  );
       }
       else if (type == "Mattes"){
+          
+          q = 1.00;
+          
           typedef itk::MattesMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > MattesMetricType;
           MattesMetricType::Pointer  mattesMetric = MattesMetricType::New();
 
@@ -452,6 +452,8 @@ int main( int argc, char *argv[] )
 
           registration->SetMetric( mattesMetric  );
       }
+      
+      std::cout<< "q-Value = "<<q<<std::endl;
 
       registration->SetFixedImage(    fixedImageReader->GetOutput()    );
       registration->SetMovingImage(   movingImageReader->GetOutput()   );
