@@ -400,7 +400,11 @@ int main( int argc, char *argv[] )
       if (strategy == "-e" ){
           // meaning is a single execution with a q-metric
           q = qValue;
-      } 
+      }
+      if (type == "Mattes" ){
+          // meaning is a single execution with a q-metric
+          q = 1.00;
+      }  
 
       RegistrationType::Pointer   registration  = RegistrationType::New();
 
@@ -413,6 +417,12 @@ int main( int argc, char *argv[] )
 
       // Choosing the metric type.
       if (type == "Tsallis"){
+          
+          if (q == 1.00 ){
+            // Will use Mattes metric 
+            goto mattes;
+          } 
+
           typedef itk::MachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisMetricType;
           TsallisMetricType::Pointer tsallisMetric = TsallisMetricType::New();
 
@@ -426,6 +436,12 @@ int main( int argc, char *argv[] )
           registration->SetMetric( tsallisMetric );
       }
       else if (type == "TsallisNorm"){
+
+          if (q == 1.00 ){
+            // Will use Mattes metric 
+            goto mattes;
+          } 
+
           typedef itk::NormalizedMachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisNormMetricType;
           TsallisNormMetricType::Pointer tsallisNormMetric = TsallisNormMetricType::New();
 
@@ -440,6 +456,8 @@ int main( int argc, char *argv[] )
       }
       else if (type == "Mattes"){
           
+          mattes:
+
           q = 1.00;
           
           typedef itk::MattesMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > MattesMetricType;
