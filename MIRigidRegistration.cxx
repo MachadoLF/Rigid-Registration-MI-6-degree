@@ -26,7 +26,6 @@
 
 // Software Guide : BeginCodeSnippet
 #include "itkImageRegistrationMethodv4.h"
-#include "itkTranslationTransform.h"
 #include "itkMachadoMutualInformationImageToImageMetricv4.h"
 #include "itkNormalizedMachadoMutualInformationImageToImageMetricv4.h"
 #include "itkMattesMutualInformationImageToImageMetricv4.h"
@@ -36,6 +35,10 @@
 #include "itkCenteredTransformInitializer.h"
 #include "itkTransformToDisplacementFieldFilter.h"
 #include "itkTransformFileWriter.h"
+
+#include "itkTranslationTransform.h"
+#include "itkVersorTransform.h"
+#include "itkCompositeTransform.h"
 
 #include <iostream>
 #include <iomanip>
@@ -106,6 +109,7 @@ public:
       registration->GetSmoothingSigmasPerLevel();
 
     std::cout << "-------------------------------------" << std::endl;
+    // std::cout <<registration->Get'<< std::endl;
     std::cout << " Current multi-resolution level = " << currentLevel << std::endl;
     std::cout << "    shrink factor = " << shrinkFactors << std::endl;
     std::cout << "    smoothing sigma = " << smoothingSigmas[currentLevel] << std::endl;
@@ -158,19 +162,28 @@ typedef  float           PixelType;
 typedef itk::Image< PixelType, Dimension >  FixedImageType;
 typedef itk::Image< PixelType, Dimension >  MovingImageType;
 
-using TransformType = itk::VersorRigid3DTransform< double >;
+//using TransformType = itk::VersorRigid3DTransform< double >;
+using RotationTransformType = itk::VersorTransform< double >;
+using TranslationTransformType = itk::TranslationTransform< double >;
+using CompositeTransformType = itk::CompositeTransform<double, Dimension >;
+
+
 typedef itk::RegularStepGradientDescentOptimizerv4<double>     OptimizerType;
 typedef itk::ImageRegistrationMethodv4<
                                   FixedImageType,
                                   MovingImageType,
-                                  TransformType    > RegistrationType;
+                                  RotationTransformType    > RotationRegistrationType;
+typedef itk::ImageRegistrationMethodv4<
+                                  FixedImageType,
+                                  MovingImageType,
+                                  TranslationTransformType    > TranslationRegistrationType;
 typedef itk::ImageFileReader< FixedImageType  > FixedImageReaderType;
 typedef itk::ImageFileReader< MovingImageType > MovingImageReaderType;
 
 int SaveImages ( FixedImageType::Pointer fixedImage,
                  MovingImageType::Pointer movingImage,
-                 TransformType::Pointer finalTransform,
-                 std::string qValueStr){
+                 CompositeTransformType::Pointer finalTransform,
+                 std::string qValueStringRotation, std::string qValueStringTranslation){
     //..............................................................
     // Writing OUTPUT images
 
@@ -206,7 +219,7 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
     WriterType::Pointer      writer =  WriterType::New();
     CastFilterType::Pointer  caster =  CastFilterType::New();
 
-    writer->SetFileName("RegisteredImage_q=" + qValueStr + ".nrrd");
+    writer->SetFileName("RegisteredImage_q=" + qValueStringRotation + "-" + qValueStringTranslation + ".nrrd");
 
     caster->SetInput( resample->GetOutput() );
     writer->SetInput( caster->GetOutput()   );
@@ -235,18 +248,23 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
     // It will set the identity transform to the moving image
     // resampling at - resample filter - .
 
-    TransformType::Pointer identityTransform = TransformType::New();
-    identityTransform->SetIdentity();
-    resample->SetTransform( identityTransform );
+    CompositeTransformType::Pointer identityTransformComposed = CompositeTransformType::New();
+    RotationTransformType::Pointer identityTransformRotation = RotationTransformType::New();
+    TranslationTransformType::Pointer identityTransformTranslation = TranslationTransformType::New();
+    identityTransformRotation->SetIdentity();
+    identityTransformTranslation->SetIdentity();
+    identityTransformComposed->AddTransform(identityTransformTranslation);
+    identityTransformComposed->AddTransform(identityTransformRotation);
+    resample->SetTransform( identityTransformComposed );
 
-    writer->SetFileName( "CheckBoardBefore_q=" + qValueStr + ".nrrd" );
+    writer->SetFileName( "CheckBoardBefore_q=" + qValueStringRotation + "-" + qValueStringTranslation + ".nrrd" );
     writer->Update();
 
     // After registration =================
     // Set the last transformation obtainned in the registrations executions
 
     resample->SetTransform( finalTransform );
-    writer->SetFileName( "CheckBoardAfter_q=" + qValueStr + ".nrrd" );
+    writer->SetFileName( "CheckBoardAfter_q=" + qValueStringRotation + "-" + qValueStringTranslation + ".nrrd" );
     writer->Update();
 
     std::cout<<"Images saved!"<<std::endl;
@@ -258,7 +276,7 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
     using TransformWriterType = itk::TransformFileWriter;
     TransformWriterType::Pointer transformWriter = TransformWriterType::New();
     transformWriter->SetInput(finalTransform);
-    transformWriter->SetFileName("finalTransform_q=" + qValueStr + ".tfm");
+    transformWriter->SetFileName("finalTransform_q=" + qValueStringRotation + "-" + qValueStringTranslation + ".tfm");
     transformWriter->Update();
 
     // .............................................................
@@ -292,7 +310,7 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
 
       fieldWriter->SetInput(dispfieldGenerator->GetOutput());
 
-      fieldWriter->SetFileName("DisplacementField_q=" + qValueStr + ".nrrd");
+      fieldWriter->SetFileName("DisplacementField_q=" + qValueStringRotation +"-" + qValueStringTranslation + ".nrrd");
       try
       {
         fieldWriter->Update();
@@ -320,10 +338,7 @@ int main( int argc, char *argv[] )
     return EXIT_FAILURE;
     }
 
-
-  // Final Transform object;
-  TransformType::Pointer finalTransform = TransformType::New();
-
+  CompositeTransformType::Pointer compositeTransform = CompositeTransformType::New();
 
   FixedImageReaderType::Pointer  fixedImageReader  = FixedImageReaderType::New();
   MovingImageReaderType::Pointer movingImageReader = MovingImageReaderType::New();
@@ -339,16 +354,18 @@ int main( int argc, char *argv[] )
   std::cout<<type<<" metric choosen! "<<std::endl;
   std::cout<<" "<<std::endl;
 
-  double qValue = 1.0;
+  double qValueR = 1.0;
+  double qValueT = 1.0;
   std::string strategy;
 
   if (type == "Tsallis" || type == "TsallisNorm" ){
       if( argc > 5 ){
 
-          qValue = atof(argv[4]);
+          qValueR = atof(argv[4]);
+          qValueT = atof(argv[5]);
 
           // argv[5] is a bool var to indicate q-optimization or single execution.
-          strategy = argv[5];
+          strategy = argv[6];
 
           if(strategy == "-o"){
 
@@ -364,9 +381,11 @@ int main( int argc, char *argv[] )
               // strategy = -o -> will perform a single execution:
               std::cout<<"Execution routine choosen! "<<std::endl;
               std::cout<<std::endl;
-              std::stringstream qValueString;
-              qValueString << std::fixed << std::setprecision(2) << qValue;
-              std::string fileName = type + "_Execution_q=" + qValueString.str() + ".csv";
+              std::stringstream qValueStringRotation;
+              qValueStringRotation << std::fixed << std::setprecision(2) << qValueR;
+              std::stringstream qValueStringTranslation;
+              qValueStringTranslation << std::fixed << std::setprecision(2) << qValueT;
+              std::string fileName = type + "_Execution_q=" + qValueStringRotation.str()+ "-"+ qValueStringTranslation.str() + ".csv";
               execution.open (fileName);
               execution <<"iterations,metric_value"<<std::endl;
           }
@@ -389,269 +408,400 @@ int main( int argc, char *argv[] )
 
       std::cerr << "Incorrect Parameters " << std::endl;
       std::cerr << " fixedImageFile   movingImageFile  MetricType ('Mattes' 'Tsallis' 'TsallisNorm') ";
-      std::cerr <<  "[qValue]  [strategy] ('-o' to optimization, '-e' to execution)" << std::endl;
+      std::cerr <<  "[qR] [qT]  [strategy] ('-o' to optimization, '-e' to execution)" << std::endl;
       std::cerr << " [save images] ('-s' for saving, Null, for not.) "<< std::endl;
       return EXIT_FAILURE;
   }
 
+  for (double qR = 0.1; qR <= qValueR; qR += 0.1){
+      for (double qT = 0.1; qT <= qValueT; qT += 0.1){
 
-  for (double q = 0.01; q <= qValue; q += 0.01){
+          if (strategy == "-e" ){
+              // meaning is a single execution with a q-metric
+              qR = qValueR;
+              qT = qValueT;           
+          }
+          if (type == "Mattes" ){
+              // meaning is a single execution with a q-metric
+              qR = 1.00;
+              qT = 1.00;
+          }  
 
-      if (strategy == "-e" ){
-          // meaning is a single execution with a q-metric
-          q = qValue;
-      }
-      if (type == "Mattes" ){
-          // meaning is a single execution with a q-metric
-          q = 1.00;
-      }  
+          RotationRegistrationType::Pointer   registrationR  = RotationRegistrationType::New();
+          TranslationRegistrationType::Pointer   registrationT  = TranslationRegistrationType::New();
+          OptimizerType::Pointer       optimizerR    = OptimizerType::New();
+          OptimizerType::Pointer       optimizerT    = OptimizerType::New();
+          registrationR->SetOptimizer(     optimizerR     );
+          registrationT->SetOptimizer(     optimizerT     );
 
-      RegistrationType::Pointer   registration  = RegistrationType::New();
+          // Metric check configuration;
+          //
+          unsigned int numberOfBins = 50;
 
-      OptimizerType::Pointer       optimizer    = OptimizerType::New();
-      registration->SetOptimizer(     optimizer     );
+          // Choosing the metric type.
+          if (type == "Tsallis"){
+              
+              if ( qR == 1.00 || qT == 1.00 ){
+                // Will use Mattes metric 
+                goto mattes;
+              } 
 
-      // Metric check configuration;
-      //
-      unsigned int numberOfBins = 50;
+              typedef itk::MachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisMetricType;
+              TsallisMetricType::Pointer tsallisMetricR = TsallisMetricType::New();
+              TsallisMetricType::Pointer tsallisMetricT = TsallisMetricType::New();
 
-      // Choosing the metric type.
-      if (type == "Tsallis"){
+              tsallisMetricR->SetqValue(qR);
+              tsallisMetricR->SetNumberOfHistogramBins( numberOfBins );
+              tsallisMetricR->SetUseMovingImageGradientFilter( false );
+              tsallisMetricR->SetUseFixedImageGradientFilter( false );
+              tsallisMetricR->SetUseSampledPointSet(false);
+              registrationR->SetMetric( tsallisMetricR );
+
+              tsallisMetricT->SetqValue(qT);
+              tsallisMetricT->SetNumberOfHistogramBins( numberOfBins );
+              tsallisMetricT->SetUseMovingImageGradientFilter( false );
+              tsallisMetricT->SetUseFixedImageGradientFilter( false );
+              tsallisMetricT->SetUseSampledPointSet(false);
+              registrationT->SetMetric( tsallisMetricT );
+          }
+          else if (type == "TsallisNorm"){
+
+              if (qR == 1.00 || qT == 1.00){
+                // Will use Mattes metric 
+                goto mattes;
+              } 
+
+              typedef itk::NormalizedMachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisNormMetricType;
+              TsallisNormMetricType::Pointer tsallisNormMetricR = TsallisNormMetricType::New();
+              TsallisNormMetricType::Pointer tsallisNormMetricT = TsallisNormMetricType::New();
+              
+              tsallisNormMetricR->SetqValue(qR);
+              tsallisNormMetricR->SetNumberOfHistogramBins( numberOfBins );
+              tsallisNormMetricR->SetUseMovingImageGradientFilter( false );
+              tsallisNormMetricR->SetUseFixedImageGradientFilter( false );
+              tsallisNormMetricR->SetUseSampledPointSet(false);
+              registrationR->SetMetric( tsallisNormMetricR  );
+
+              tsallisNormMetricT->SetqValue(qT);
+              tsallisNormMetricT->SetNumberOfHistogramBins( numberOfBins );
+              tsallisNormMetricT->SetUseMovingImageGradientFilter( false );
+              tsallisNormMetricT->SetUseFixedImageGradientFilter( false );
+              tsallisNormMetricT->SetUseSampledPointSet(false);
+              registrationT->SetMetric( tsallisNormMetricT  );
+          }
+          else if (type == "Mattes"){  
+              //qR, qT = 1.00, 1.00;              
+              mattes:
+              
+              typedef itk::MattesMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > MattesMetricType;
+              MattesMetricType::Pointer  mattesMetric = MattesMetricType::New();
+              mattesMetric->SetNumberOfHistogramBins( numberOfBins );
+              mattesMetric->SetUseMovingImageGradientFilter( false );
+              mattesMetric->SetUseFixedImageGradientFilter( false );
+              mattesMetric->SetUseSampledPointSet(false);
+
+              if (type == "Mattes"){
+                
+                std::cout<<"Mattes Metric Set."<<std::endl;
+                registrationR->SetMetric( mattesMetric  );
+                registrationT->SetMetric( mattesMetric  );
+              
+              }
+              if (type == "Tsallis" || type == "TsallisNorm"){
+                if (qR == 1.00){
+                  
+                  std::cout<<"Tsallis or Tsallis norm using Mattes for qR = 1.00.";
+                  registrationR->SetMetric( mattesMetric  );
+                
+                }
+                if (qT == 1.00 ){
+
+                  std::cout<<"Tsallis or Tsallis norm using Mattes for qT = 1.00.";
+                  registrationT->SetMetric( mattesMetric  );
+
+                }
+              }
+              
+          }
           
-          if (q == 1.00 ){
-            // Will use Mattes metric 
-            goto mattes;
-          } 
+          std::cout<< "qR = "<<qR<< "  qT = "<<qT<<std::endl;
 
-          typedef itk::MachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisMetricType;
-          TsallisMetricType::Pointer tsallisMetric = TsallisMetricType::New();
-
-          tsallisMetric->SetqValue(q);
-
-          tsallisMetric->SetNumberOfHistogramBins( numberOfBins );
-          tsallisMetric->SetUseMovingImageGradientFilter( false );
-          tsallisMetric->SetUseFixedImageGradientFilter( false );
-          tsallisMetric->SetUseSampledPointSet(false);
-
-          registration->SetMetric( tsallisMetric );
-      }
-      else if (type == "TsallisNorm"){
-
-          if (q == 1.00 ){
-            // Will use Mattes metric 
-            goto mattes;
-          } 
-
-          typedef itk::NormalizedMachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisNormMetricType;
-          TsallisNormMetricType::Pointer tsallisNormMetric = TsallisNormMetricType::New();
-
-          tsallisNormMetric->SetqValue(q);
-
-          tsallisNormMetric->SetNumberOfHistogramBins( numberOfBins );
-          tsallisNormMetric->SetUseMovingImageGradientFilter( false );
-          tsallisNormMetric->SetUseFixedImageGradientFilter( false );
-          tsallisNormMetric->SetUseSampledPointSet(false);
-
-          registration->SetMetric( tsallisNormMetric  );
-      }
-      else if (type == "Mattes"){
+          //*****************************************************
+          // Translation Stage;
+          std::cout<<"Translation Stage***********************************"<<std::endl;
           
-          mattes:
+          registrationT->SetFixedImage(    fixedImageReader->GetOutput()    );
+          registrationT->SetMovingImage(   movingImageReader->GetOutput()   );
+    
+          TranslationTransformType::Pointer  initialTransformTranslation = TranslationTransformType::New();
+          initialTransformTranslation->SetIdentity();
 
-          q = 1.00;
+          //using TranslationTransformInitializerType = itk::CenteredTransformInitializer<
+          //    TranslationTransformType,
+          //    FixedImageType,
+          //    MovingImageType >;
+
+          //TranslationTransformInitializerType::Pointer translationInitializer = TranslationTransformInitializerType::New();
+
+          /*
+          translationInitializer->SetTransform(  initialTransformTranslation );
+          translationInitializer->SetFixedImage(  fixedImageReader->GetOutput() );
+          translationInitializer->SetMovingImage(  movingImageReader->GetOutput() );
+          translationInitializer->MomentsOn();
+          translationInitializer->InitializeTransform();
+          */
+
+          registrationT->SetInitialTransform( initialTransformTranslation );
+          registrationT->InPlaceOn();
+
+          // Parameter scale setter
+          //
+          using OptimizerScalesType = OptimizerType::ScalesType;
+          OptimizerScalesType optimizerScalesTranslation ( initialTransformTranslation->GetNumberOfParameters() );
+          optimizerScalesTranslation[0] = 1.0;
+          optimizerScalesTranslation[1] = 1.0;
+          optimizerScalesTranslation[2] = 1.0;
+          optimizerT->SetScales( optimizerScalesTranslation );
+
+          // Cinfiguring the optimizer
+          // Different line
+
+          optimizerT->SetLearningRate( 1.0 );
+          optimizerT->SetMinimumStepLength( 0.01 );
+          optimizerT->SetNumberOfIterations( 300 );
+          optimizerT->ReturnBestParametersAndValueOn();
+
+          // Create the Command observer and register it with the optimizer.
+          //
+          CommandIterationUpdate::Pointer observerTranslation = CommandIterationUpdate::New();
+          optimizerT->AddObserver( itk::IterationEvent(), observerTranslation );
+
+          const unsigned int numberOfLevels = 1;
+
+          TranslationRegistrationType::ShrinkFactorsArrayType shrinkFactorsPerLevelTranslation;
+          shrinkFactorsPerLevelTranslation.SetSize( numberOfLevels );
+          shrinkFactorsPerLevelTranslation[0] = 1;
+          //shrinkFactorsPerLevelTranslation[1] = 2;
+          //shrinkFactorsPerLevelTranslation[2] = 1;
           
-          typedef itk::MattesMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > MattesMetricType;
-          MattesMetricType::Pointer  mattesMetric = MattesMetricType::New();
+          TranslationRegistrationType::SmoothingSigmasArrayType smoothingSigmasPerLevelTranslation;
+          smoothingSigmasPerLevelTranslation.SetSize( numberOfLevels );
+          smoothingSigmasPerLevelTranslation[0] = 0;
+          //smoothingSigmasPerLevelTranslation[1] = 1;
+          //smoothingSigmasPerLevelTranslation[2] = 0;
+          
+          registrationT->SetNumberOfLevels ( numberOfLevels );
+          registrationT->SetSmoothingSigmasPerLevel( smoothingSigmasPerLevelTranslation );
+          registrationT->SetShrinkFactorsPerLevel( shrinkFactorsPerLevelTranslation );
 
-          mattesMetric->SetNumberOfHistogramBins( numberOfBins );
-          mattesMetric->SetUseMovingImageGradientFilter( false );
-          mattesMetric->SetUseFixedImageGradientFilter( false );
-          mattesMetric->SetUseSampledPointSet(false);
+          using TranslationCommandRegistrationType = RegistrationInterfaceCommand<TranslationRegistrationType>;
+          TranslationCommandRegistrationType::Pointer commandTranslation = TranslationCommandRegistrationType::New();
+          registrationT->AddObserver(itk::MultiResolutionIterationEvent(), commandTranslation);
 
-          registration->SetMetric( mattesMetric  );
-      }
-      
-      std::cout<< "q-Value = "<<q<<std::endl;
+          try
+            {
+            registrationT->Update();
+            std::cout << std::endl;
+            std::cout << "Optimizer stop condition: "
+                      << registrationT->GetOptimizer()->GetStopConditionDescription()
+                      << std::endl;
+            }
+          catch( itk::ExceptionObject & err )
+            {
+            std::cerr << "ExceptionObject caught !" << std::endl;
+            std::cerr << err << std::endl;
+            return EXIT_FAILURE;
+            }
 
-      registration->SetFixedImage(    fixedImageReader->GetOutput()    );
-      registration->SetMovingImage(   movingImageReader->GetOutput()   );
+            compositeTransform->AddTransform(initialTransformTranslation);
 
-      // Setting initial transform configuration::
-      //
-      TransformType::Pointer  initialTransform = TransformType::New();
+          //*****************************************************
+          // Rotation Stage;
+          std::cout<<"Rotation Stage***********************************"<<std::endl;
+          
+          registrationR->SetFixedImage(    fixedImageReader->GetOutput()    );
+          registrationR->SetMovingImage(   movingImageReader->GetOutput()   );
 
-      using TransformInitializerType = itk::CenteredTransformInitializer<
-          TransformType,
-          FixedImageType,
-          MovingImageType >;
-          TransformInitializerType::Pointer initializer =
-          TransformInitializerType::New();
+          // Setting initial transform configuration::
 
-      initializer->SetTransform(  initialTransform );
-      initializer->SetFixedImage(  fixedImageReader->GetOutput() );
-      initializer->SetMovingImage(  movingImageReader->GetOutput() );
-      initializer->MomentsOn();
+          using RotationTransformInitializerType = itk::CenteredTransformInitializer<
+              RotationTransformType,
+              FixedImageType,
+              MovingImageType >;
+          
+          RotationTransformType::Pointer initialTransformRotation = RotationTransformType::New();
+          initialTransformRotation->SetIdentity();
 
-      initializer->InitializeTransform();
+          RotationTransformInitializerType::Pointer rotationInitializer = RotationTransformInitializerType::New();
+          rotationInitializer->SetTransform(  initialTransformRotation );
+          rotationInitializer->SetFixedImage(  fixedImageReader->GetOutput() );
+          rotationInitializer->SetMovingImage(  movingImageReader->GetOutput() );
+          rotationInitializer->MomentsOn();
+          rotationInitializer->InitializeTransform();
+          
 
-      // Angular componet of initial transform
-      //
-      using VersorType = TransformType::VersorType;
-      using VectorType = VersorType::VectorType;
-      VersorType     rotation;
-      VectorType     axis;
-      axis[0] = 0.0;
-      axis[1] = 0.0;
-      axis[2] = 1.0;
-      constexpr double angle = 0;
-      rotation.Set(  axis, angle  );
-      initialTransform->SetRotation( rotation );
+          // Angular componet of initial transform
+          //
+          using VersorType = RotationTransformType::VersorType;
+          using VectorType = VersorType::VectorType;
+          VersorType     rotation;
+          VectorType     axis;
+          axis[0] = 0.0;
+          axis[1] = 0.0;
+          axis[2] = 1.0;
+          constexpr double angle = 0;
+          rotation.Set(  axis, angle  );
+          initialTransformRotation->SetRotation( rotation );
+          
+          registrationR->SetInitialTransform( initialTransformRotation );
+          registrationR->InPlaceOn();
 
-      registration->SetInitialTransform( initialTransform );
+          // Connecting previous stage transform to the next stage;
+          registrationR->SetMovingInitialTransform(
+            initialTransformTranslation);
 
-      // Parameter scale setter
-      //
-      using OptimizerScalesType = OptimizerType::ScalesType;
-      OptimizerScalesType optimizerScales( initialTransform->GetNumberOfParameters() );
-      const double translationScale = 1.0 / 1000.0;
-      optimizerScales[0] = 1.0;
-      optimizerScales[1] = 1.0;
-      optimizerScales[2] = 1.0;
-      optimizerScales[3] = translationScale;
-      optimizerScales[4] = translationScale;
-      optimizerScales[5] = translationScale;
-      optimizer->SetScales( optimizerScales );
+          OptimizerScalesType optimizerScalesRotation ( initialTransformRotation->GetNumberOfParameters() );      
+          const double rotationScale = 1.0 / 1000.0;
+          optimizerScalesRotation[0] = rotationScale;
+          optimizerScalesRotation[1] = rotationScale;
+          optimizerScalesRotation[2] = rotationScale;
+          optimizerR->SetScales( optimizerScalesRotation );
 
-      // Cinfiguring the optimizer
-      // Different line
+          optimizerR->SetLearningRate( 1.0 );
+          optimizerR->SetMinimumStepLength( 0.01 );
+          optimizerR->SetNumberOfIterations( 300 );
+          optimizerR->ReturnBestParametersAndValueOn();
 
-      optimizer->SetLearningRate( 1.0 );
-      optimizer->SetMinimumStepLength( 0.01 );
-      optimizer->SetNumberOfIterations( 300 );
-      optimizer->ReturnBestParametersAndValueOn();
+          CommandIterationUpdate::Pointer observerRotation = CommandIterationUpdate::New();
+          optimizerR->AddObserver( itk::IterationEvent(), observerRotation );
 
-      // Create the Command observer and register it with the optimizer.
-      //
-      CommandIterationUpdate::Pointer observer = CommandIterationUpdate::New();
-      optimizer->AddObserver( itk::IterationEvent(), observer );
+          // One level registration process without shrinking and smoothing.
+          //
+          const unsigned int numberOfLevelsR = 3;
 
-      // One level registration process without shrinking and smoothing.
-      //
-      const unsigned int numberOfLevels = 3;
+          RotationRegistrationType::ShrinkFactorsArrayType shrinkFactorsPerLevelRotation;
+          shrinkFactorsPerLevelRotation.SetSize( numberOfLevelsR );
+          shrinkFactorsPerLevelRotation[0] = 3;
+          shrinkFactorsPerLevelRotation[1] = 2;
+          shrinkFactorsPerLevelRotation[2] = 1;
 
-      RegistrationType::ShrinkFactorsArrayType shrinkFactorsPerLevel;
-      shrinkFactorsPerLevel.SetSize( numberOfLevels );
-      shrinkFactorsPerLevel[0] = 3;
-      shrinkFactorsPerLevel[1] = 2;
-      shrinkFactorsPerLevel[2] = 1;
+          RotationRegistrationType::SmoothingSigmasArrayType smoothingSigmasPerLevelRotation;
+          smoothingSigmasPerLevelRotation.SetSize( numberOfLevelsR );
+          smoothingSigmasPerLevelRotation[0] = 2;
+          smoothingSigmasPerLevelRotation[1] = 1;
+          smoothingSigmasPerLevelRotation[2] = 0;
 
-      RegistrationType::SmoothingSigmasArrayType smoothingSigmasPerLevel;
-      smoothingSigmasPerLevel.SetSize( numberOfLevels );
-      smoothingSigmasPerLevel[0] = 2;
-      smoothingSigmasPerLevel[1] = 1;
-      smoothingSigmasPerLevel[2] = 0;
+          registrationR->SetNumberOfLevels ( numberOfLevelsR );
+          registrationR->SetSmoothingSigmasPerLevel( smoothingSigmasPerLevelRotation );
+          registrationR->SetShrinkFactorsPerLevel( shrinkFactorsPerLevelRotation );
 
-      registration->SetNumberOfLevels ( numberOfLevels );
-      registration->SetSmoothingSigmasPerLevel( smoothingSigmasPerLevel );
-      registration->SetShrinkFactorsPerLevel( shrinkFactorsPerLevel );
+          using RotationCommandRegistrationType = RegistrationInterfaceCommand<RotationRegistrationType>;
+          RotationCommandRegistrationType::Pointer commandRotation = RotationCommandRegistrationType::New();
+          registrationR->AddObserver(itk::MultiResolutionIterationEvent(), commandRotation);
+          
+          try
+            {
+            registrationR->Update();
+            std::cout << std::endl;
+            std::cout << "Optimizer stop condition: "
+                      << registrationR->GetOptimizer()->GetStopConditionDescription()
+                      << std::endl;
+            }
+          catch( itk::ExceptionObject & err )
+            {
+            std::cerr << "ExceptionObject caught !" << std::endl;
+            std::cerr << err << std::endl;
+            return EXIT_FAILURE;
+            }  
+          // OUTPUTTING RESULTS
 
-      using RigidCommandRegistrationType = RegistrationInterfaceCommand<RegistrationType>;
-      RigidCommandRegistrationType::Pointer command = RigidCommandRegistrationType::New();
-      registration->AddObserver(itk::MultiResolutionIterationEvent(), command);
+          compositeTransform->AddTransform(initialTransformRotation);  
 
-      try
-        {
-        registration->Update();
-        std::cout << std::endl;
-        std::cout << "Optimizer stop condition: "
-                  << registration->GetOptimizer()->GetStopConditionDescription()
-                  << std::endl;
-        }
-      catch( itk::ExceptionObject & err )
-        {
-        std::cerr << "ExceptionObject caught !" << std::endl;
-        std::cerr << err << std::endl;
-        return EXIT_FAILURE;
-        }
+          //
+          //TransformType::ParametersType finalParameters =
+          //                          registration->GetOutput()->Get()->GetParameters();
 
-      // OUTPUTTING RESULTS
-      //
-      TransformType::ParametersType finalParameters =
-                                registration->GetOutput()->Get()->GetParameters();
+          // For stability reasons it may be desirable to round up the values of translation
+          //
+          // unsigned long numberOfIterations = optimizer->GetCurrentIteration();
 
-      // For stability reasons it may be desirable to round up the values of translation
-      //
-      // unsigned long numberOfIterations = optimizer->GetCurrentIteration();
+          RotationTransformType::Pointer finalTransform = initialTransformRotation;
+          double metricValue = optimizerR->GetValue();
 
-      finalTransform->SetFixedParameters( registration->GetOutput()->Get()->GetFixedParameters() );
-      finalTransform->SetParameters( finalParameters );
+          /*
+          finalTransform->SetFixedParameters( registration->GetOutput()->Get()->GetFixedParameters() );
+          finalTransform->SetParameters( finalParameters );
+          TransformType::MatrixType matrix = finalTransform->GetMatrix();
+          TransformType::OffsetType offset = finalTransform->GetOffset();
+          std::cout << "Matrix = " << std::endl << matrix << std::endl;
+          std::cout << "Offset = " << std::endl << offset << std::endl; */
 
-      double metricValue = optimizer->GetValue();
+          if ( strategy == "-e" && type != "Mattes" ){
+              
+              // Printing out results
+              // Initializing the save flag.
+              //
+              std::string save;
+              save = argv[7];
 
-      TransformType::MatrixType matrix = finalTransform->GetMatrix();
-      TransformType::OffsetType offset = finalTransform->GetOffset();
-      std::cout << "Matrix = " << std::endl << matrix << std::endl;
-      std::cout << "Offset = " << std::endl << offset << std::endl;
+              if (save == "-s") {
+                std::stringstream qValueStringTranslation;
+                qValueStringTranslation << std::fixed << std::setprecision(2) << qT; 
+                std::stringstream qValueStringRotation;
+                qValueStringRotation << std::fixed << std::setprecision(2) << qR;
+                SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), compositeTransform, qValueStringRotation.str(),  qValueStringTranslation.str());
 
-      if ( strategy == "-e" && type != "Mattes" ){
+              } else {
+                std::cout<<"Images not saved!" <<std::endl;
+                std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
+              }
+
+              break;
+
+          } else if ( type == "Mattes" ) {
+              
+              // Printing out results
+              // Initializing the save flag.
+              //
+              std::string save;
+              save = argv[4];
+
+              if (save == "-s") {
+              
+                std::stringstream qValueStringTranslation;
+                qValueStringTranslation << std::fixed << std::setprecision(2) << qT; 
+                std::stringstream qValueStringRotation;
+                qValueStringRotation << std::fixed << std::setprecision(2) << qR;
+                SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), compositeTransform, qValueStringRotation.str(),  qValueStringTranslation.str());
+              
+              } else {
+                std::cout<<"Images not saved!" <<std::endl;
+                std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
+              }
+
+              break;          
+          }
+          
+          optimization <<qR<<","<<qT<<","<<metricValue<<std::endl;
           
           // Printing out results
           // Initializing the save flag.
           //
           std::string save;
-          save = argv[6];
+          save = argv[7];
 
           if (save == "-s") {
-             std::stringstream qValueString;
-             qValueString << std::fixed << std::setprecision(2) << q;
-             SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform, qValueString.str());
-
+              std::stringstream qValueStringTranslation;
+              qValueStringTranslation << std::fixed << std::setprecision(2) << qT; 
+              std::stringstream qValueStringRotation;
+              qValueStringRotation << std::fixed << std::setprecision(2) << qR;
+              SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), compositeTransform, qValueStringRotation.str(),  qValueStringTranslation.str());
+              
           } else {
-             std::cout<<"Images not saved!" <<std::endl;
-             std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
+            std::cout<<"Images not saved!" <<std::endl;
+            std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
           }
-
-          break;
-
-      } else if ( type == "Mattes" ) {
-          
-          // Printing out results
-          // Initializing the save flag.
-          //
-          std::string save;
-          save = argv[4];
-
-          if (save == "-s") {
-             std::stringstream qValueString;
-             qValueString << std::fixed << std::setprecision(2) << q;
-             SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform, qValueString.str());
-
-          } else {
-             std::cout<<"Images not saved!" <<std::endl;
-             std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
-          }
-
-          break;          
-      }
-      
-      optimization <<q<<","<<metricValue<<std::endl;
-      
-      // Printing out results
-      // Initializing the save flag.
-      //
-      std::string save;
-      save = argv[6];
-
-      if (save == "-s") {
-          std::stringstream qValueString;
-          qValueString << std::fixed << std::setprecision(2) << q;
-          SaveImages(fixedImageReader->GetOutput(), movingImageReader->GetOutput(), finalTransform, qValueString.str());
-
-      } else {
-         std::cout<<"Images not saved!" <<std::endl;
-         std::cout<<"Pass '-s' for saving images or leave null to not saving."<<std::endl;
-      }
-   } // q-value loop;
-  
+      } // q loop;
+    }// q loop;
   return EXIT_SUCCESS;
 }
