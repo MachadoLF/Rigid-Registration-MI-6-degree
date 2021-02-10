@@ -33,6 +33,7 @@
 
 #include "itkVersorRigid3DTransform.h"
 #include "itkCenteredTransformInitializer.h"
+#include "itkImageMomentsCalculator.h"
 #include "itkTransformToDisplacementFieldFilter.h"
 #include "itkTransformFileWriter.h"
 
@@ -109,7 +110,7 @@ public:
       registration->GetSmoothingSigmasPerLevel();
 
     std::cout << "-------------------------------------" << std::endl;
-    // std::cout <<registration->Get'<< std::endl;
+    std::cout <<"-----"<<registration->GetObjectName()<<"-----"<< std::endl;
     std::cout << " Current multi-resolution level = " << currentLevel << std::endl;
     std::cout << "    shrink factor = " << shrinkFactors << std::endl;
     std::cout << "    smoothing sigma = " << smoothingSigmas[currentLevel] << std::endl;
@@ -179,6 +180,14 @@ typedef itk::ImageRegistrationMethodv4<
                                   TranslationTransformType    > TranslationRegistrationType;
 typedef itk::ImageFileReader< FixedImageType  > FixedImageReaderType;
 typedef itk::ImageFileReader< MovingImageType > MovingImageReaderType;
+typedef itk::ResampleImageFilter< MovingImageType, FixedImageType > ResampleFilterType;
+
+typedef  float  OutputPixelType;
+typedef itk::Image< OutputPixelType, Dimension > OutputImageType;
+typedef itk::CastImageFilter<
+        FixedImageType,
+        OutputImageType > CastFilterType;
+typedef itk::ImageFileWriter< OutputImageType > WriterType;
 
 int SaveImages ( FixedImageType::Pointer fixedImage,
                  MovingImageType::Pointer movingImage,
@@ -186,11 +195,6 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
                  std::string qValueStringRotation, std::string qValueStringTranslation){
     //..............................................................
     // Writing OUTPUT images
-
-    typedef itk::ResampleImageFilter<
-            MovingImageType,
-            FixedImageType >    ResampleFilterType;
-
     ResampleFilterType::Pointer resample = ResampleFilterType::New();
 
     resample->SetTransform( finalTransform );
@@ -204,17 +208,6 @@ int SaveImages ( FixedImageType::Pointer fixedImage,
     resample->SetOutputSpacing( fixedImage->GetSpacing() );
     resample->SetOutputDirection( fixedImage->GetDirection() );
     resample->SetDefaultPixelValue( defaultPixelValue );
-
-    typedef  float  OutputPixelType;
-    const unsigned int Dimension = 3;
-
-    typedef itk::Image< OutputPixelType, Dimension > OutputImageType;
-
-    typedef itk::CastImageFilter<
-            FixedImageType,
-            OutputImageType > CastFilterType;
-
-    typedef itk::ImageFileWriter< OutputImageType >  WriterType;
 
     WriterType::Pointer      writer =  WriterType::New();
     CastFilterType::Pointer  caster =  CastFilterType::New();
@@ -532,6 +525,7 @@ int main( int argc, char *argv[] )
           
           registrationT->SetFixedImage(    fixedImageReader->GetOutput()    );
           registrationT->SetMovingImage(   movingImageReader->GetOutput()   );
+          registrationT->SetObjectName("TranslationTransform");
     
           TranslationTransformType::Pointer  initialTransformTranslation = TranslationTransformType::New();
           initialTransformTranslation->SetIdentity();
@@ -554,6 +548,8 @@ int main( int argc, char *argv[] )
           registrationT->SetInitialTransform( initialTransformTranslation );
           registrationT->InPlaceOn();
 
+          compositeTransform->AddTransform( initialTransformTranslation );
+          
           // Parameter scale setter
           //
           using OptimizerScalesType = OptimizerType::ScalesType;
@@ -596,7 +592,7 @@ int main( int argc, char *argv[] )
 
           using TranslationCommandRegistrationType = RegistrationInterfaceCommand<TranslationRegistrationType>;
           TranslationCommandRegistrationType::Pointer commandTranslation = TranslationCommandRegistrationType::New();
-          registrationT->AddObserver(itk::MultiResolutionIterationEvent(), commandTranslation);
+          registrationT->AddObserver(itk::MultiResolutionIterationEvent(), commandTranslation);     
 
           try
             {
@@ -612,33 +608,71 @@ int main( int argc, char *argv[] )
             std::cerr << err << std::endl;
             return EXIT_FAILURE;
             }
+            compositeTransform->AddTransform(registrationT->GetModifiableTransform());
 
-            compositeTransform->AddTransform(initialTransformTranslation);
+          ResampleFilterType::Pointer resampleT = ResampleFilterType::New();
+          WriterType::Pointer      writerT =  WriterType::New();
+          CastFilterType::Pointer  casterT =  CastFilterType::New();
+
+          resampleT->SetTransform( compositeTransform );
+          resampleT->SetInput( movingImageReader->GetOutput() );
+
+          // Seting aditional resampling information.
+          resampleT->SetSize(  fixedImageReader->GetOutput()->GetLargestPossibleRegion().GetSize() );
+          resampleT->SetOutputOrigin(  fixedImageReader->GetOutput()->GetOrigin() );
+          resampleT->SetOutputSpacing( fixedImageReader->GetOutput()->GetSpacing() );
+          resampleT->SetOutputDirection( fixedImageReader->GetOutput()->GetDirection() );
+          resampleT->SetDefaultPixelValue( 0 );
+          resampleT->Update();
+
+          writerT->SetFileName("ResampledAfterTranslation.nrrd");
+          casterT->SetInput( resampleT->GetOutput() );
+          writerT->SetInput( casterT->GetOutput()   );
+          writerT->Update();
+
+          MovingImageType::Pointer resampledMovingImage = MovingImageType::New();
+          resampledMovingImage = resampleT->GetOutput();  
 
           //*****************************************************
           // Rotation Stage;
           std::cout<<"Rotation Stage***********************************"<<std::endl;
           
           registrationR->SetFixedImage(    fixedImageReader->GetOutput()    );
-          registrationR->SetMovingImage(   movingImageReader->GetOutput()   );
+          registrationR->SetMovingImage(   resampledMovingImage   );
+          registrationR->SetObjectName("RotationTransform");
 
           // Setting initial transform configuration::
-
+          /*  
           using RotationTransformInitializerType = itk::CenteredTransformInitializer<
               RotationTransformType,
               FixedImageType,
               MovingImageType >;
+          */
           
-          RotationTransformType::Pointer initialTransformRotation = RotationTransformType::New();
-          initialTransformRotation->SetIdentity();
+          using FixedImageCalculatorType = itk::ImageMomentsCalculator<FixedImageType>;
+          FixedImageCalculatorType::Pointer fixedCalculator = FixedImageCalculatorType::New();
+          fixedCalculator->SetImage(fixedImageReader->GetOutput());
+          fixedCalculator->Compute();
 
+          FixedImageCalculatorType::VectorType fixedCenter = fixedCalculator->GetCenterOfGravity();
+
+          RotationTransformType::Pointer initialTransformRotation = RotationTransformType::New();
+          //initialTransformRotation->SetIdentity();
+          const unsigned int numberOfFixedParameters = initialTransformRotation->GetFixedParameters().Size();
+          RotationTransformType::ParametersType fixedParameters(numberOfFixedParameters);
+          for (unsigned int i = 0; i < numberOfFixedParameters; ++i)
+          {
+              fixedParameters[i] = fixedCenter[i];
+          }
+          initialTransformRotation->SetFixedParameters(fixedParameters);
+
+          /*   
           RotationTransformInitializerType::Pointer rotationInitializer = RotationTransformInitializerType::New();
           rotationInitializer->SetTransform(  initialTransformRotation );
           rotationInitializer->SetFixedImage(  fixedImageReader->GetOutput() );
-          rotationInitializer->SetMovingImage(  movingImageReader->GetOutput() );
+          rotationInitializer->SetMovingImage(  resampledMovingImage );
           rotationInitializer->MomentsOn();
           rotationInitializer->InitializeTransform();
-          
 
           // Angular componet of initial transform
           //
@@ -652,13 +686,14 @@ int main( int argc, char *argv[] )
           constexpr double angle = 0;
           rotation.Set(  axis, angle  );
           initialTransformRotation->SetRotation( rotation );
-          
+          */
+
           registrationR->SetInitialTransform( initialTransformRotation );
           registrationR->InPlaceOn();
 
           // Connecting previous stage transform to the next stage;
-          registrationR->SetMovingInitialTransform(
-            initialTransformTranslation);
+          //registrationR->SetMovingInitialTransformInput(
+          //   registrationT->GetTransformOutput());
 
           OptimizerScalesType optimizerScalesRotation ( initialTransformRotation->GetNumberOfParameters() );      
           const double rotationScale = 1.0 / 1000.0;
@@ -715,7 +750,7 @@ int main( int argc, char *argv[] )
             }  
           // OUTPUTTING RESULTS
 
-          compositeTransform->AddTransform(initialTransformRotation);  
+          compositeTransform->AddTransform(registrationR->GetModifiableTransform());  
 
           //
           //TransformType::ParametersType finalParameters =
@@ -725,7 +760,7 @@ int main( int argc, char *argv[] )
           //
           // unsigned long numberOfIterations = optimizer->GetCurrentIteration();
 
-          RotationTransformType::Pointer finalTransform = initialTransformRotation;
+          CompositeTransformType::Pointer finalTransform = compositeTransform;
           double metricValue = optimizerR->GetValue();
 
           /*
