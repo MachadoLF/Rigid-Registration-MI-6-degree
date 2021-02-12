@@ -395,15 +395,16 @@ int main( int argc, char *argv[] )
   }
 
 
-  for (double q = 0.01; q < qValue; q += 0.01){
+  for (double q = 0.01; q <= qValue; q += 0.01){
 
       if (strategy == "-e" ){
           // meaning is a single execution with a q-metric. Before repeating the loop the code break.
           q = qValue;
-          // std::cout<< "q-Value = "<<q<<std::endl;
       }
-
-      std::cout<< "q-Value = "<<q<<std::endl;
+      if (type == "Mattes" ){
+          // meaning is a single execution with a q-metric
+          q = 1.00;
+      }  
 
       RegistrationType::Pointer   registration  = RegistrationType::New();
 
@@ -418,10 +419,12 @@ int main( int argc, char *argv[] )
 
       // Choosing the metric type.
       if (type == "Tsallis"){
-          // for q = 1.0 one should use Mattes Entropy
-          if (q == 1.0 ) {
-              goto mattes;
-          }
+          
+          if (q == 1.00 ){
+            // Will use Mattes metric 
+            goto mattes;
+          } 
+
           typedef itk::MachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisMetricType;
           TsallisMetricType::Pointer tsallisMetric = TsallisMetricType::New();
 
@@ -435,10 +438,11 @@ int main( int argc, char *argv[] )
           registration->SetMetric( tsallisMetric );
       }
       else if (type == "TsallisNorm"){
-          // for q = 1.0 one should use Mattes Entropy
-          if (q == 1.0 ) {
-              goto mattes;
-          }
+
+          if (q == 1.00 ){
+            // Will use Mattes metric 
+            goto mattes;
+          } 
 
           typedef itk::NormalizedMachadoMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > TsallisNormMetricType;
           TsallisNormMetricType::Pointer tsallisNormMetric = TsallisNormMetricType::New();
@@ -454,6 +458,9 @@ int main( int argc, char *argv[] )
       }
       else if (type == "Mattes"){
           mattes:
+          
+          q = 1.00;
+          
           std::cout<<"Using Mattes Entropy Class."<<std::endl;
 
           typedef itk::MattesMutualInformationImageToImageMetricv4< FixedImageType,MovingImageType > MattesMetricType;
@@ -466,6 +473,8 @@ int main( int argc, char *argv[] )
 
           registration->SetMetric( mattesMetric  );
       }
+      
+      std::cout<< "q-Value = "<<q<<std::endl;
 
       registration->SetFixedImage(    fixedImageReader->GetOutput()    );
       registration->SetMovingImage(   movingImageReader->GetOutput()   );
